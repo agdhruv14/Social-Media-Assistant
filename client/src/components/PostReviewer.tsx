@@ -27,7 +27,7 @@ const PostReviewer: React.FC = () => {
       const response = await fetch('http://localhost:5000/review', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, platform })
+        body: JSON.stringify({ text, platform }),
       });
       const data: ReviewResult = await response.json();
       setResult(data);
@@ -39,9 +39,8 @@ const PostReviewer: React.FC = () => {
   };
 
   return (
-    <div>
+    <div className="post-reviewer">
       <textarea
-        className="w-full border p-2 mb-2"
         rows={6}
         value={text}
         onChange={(e) => setText(e.target.value)}
@@ -49,7 +48,6 @@ const PostReviewer: React.FC = () => {
       />
 
       <select
-        className="border p-2 mb-2"
         value={platform}
         onChange={(e) => setPlatform(e.target.value as Platform)}
       >
@@ -60,21 +58,17 @@ const PostReviewer: React.FC = () => {
         ))}
       </select>
 
-      <button
-        className="bg-blue-600 text-white px-4 py-2 mb-4"
-        onClick={handleReview}
-        disabled={loading}
-      >
+      <button onClick={handleReview} disabled={loading}>
         {loading ? 'Reviewing...' : 'Review Post'}
       </button>
 
       {result && (
-        <div className="space-y-4">
-          <div><strong>Tone:</strong> {result.tone}</div>
-          <div>
+        <div>
+          <p><strong>Tone:</strong> {result.tone}</p>
+          <p>
             <strong>Limitations:</strong>{' '}
             Char Limit: {result.limitations.char_limit}, Hashtags: {result.limitations.hashtag_limit}
-          </div>
+          </p>
           <div>
             <strong>Suggestions:</strong>
             <p>{result.suggestions}</p>
@@ -90,5 +84,3 @@ const PostReviewer: React.FC = () => {
 };
 
 export default PostReviewer;
-
-

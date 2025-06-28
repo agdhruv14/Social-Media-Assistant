@@ -14,7 +14,14 @@ CORS(app)
 
 # Gemini API configuration
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-GEMINI_API_URL = os.getenv("GEMINI_API_URL")
+if not GEMINI_API_KEY:
+    raise RuntimeError("GEMINI_API_KEY environment variable is required.")
+# Construct the full endpoint including the key
+GEMINI_API_URL = (
+    "https://generativelanguage.googleapis.com/"
+    "v1beta/models/gemini-2.0-flash:generateContent"
+    f"?key={GEMINI_API_KEY}"
+)
 
 # Platform-specific limits
 PLATFORM_LIMITS = {
@@ -25,7 +32,7 @@ PLATFORM_LIMITS = {
 }
 
 # Simple NLP-based tone classification
-def classify_tone(text):
+def classify_tone(text: str) -> str:
     blob = TextBlob(text)
     polarity = blob.sentiment.polarity
     if polarity > 0.1:
@@ -35,23 +42,26 @@ def classify_tone(text):
     return "Neutral"
 
 # Wrapper to call the Gemini completion API
-def call_gemini_api(prompt):
-    headers = {
-        "Authorization": f"Bearer {GEMINI_API_KEY}",
-        "Content-Type": "application/json"
+def call_gemini_api(prompt: str) -> str:
+    headers = {"Content-Type": "application/json"}
+    payload = {
+        "contents": [
+            {"parts": [{"text": prompt}]}  # wrap prompt as per Gemini API quickstart
+        ]
     }
-    payload = {"prompt": prompt, "max_tokens": 200}
     resp = requests.post(GEMINI_API_URL, json=payload, headers=headers)
     resp.raise_for_status()
     data = resp.json()
-    # Adjust according to actual response schema
-    return data.get("choices", [])[0].get("text", "").strip()
+    # Google Generative Language API returns candidates under 'candidates'
+    answer = data.get("candidates", [])[0].get("content", "")['parts'][0]['text']
+    print(answer)
+    return answer
 
 @app.route('/review', methods=['POST'])
 def review_post():
-    data = request.get_json() or {}
-    text = data.get('text', '')
-    platform = data.get('platform', '').lower()
+    req = request.get_json() or {}
+    text: str = req.get('text', '')
+    platform: str = req.get('platform', '').lower()
 
     # Analyse tone
     tone = classify_tone(text)
@@ -59,14 +69,18 @@ def review_post():
     # Fetch platform limits
     limits = PLATFORM_LIMITS.get(platform, {})
 
-    # Generate suggestions and revised post via Gemini
+    # Prepare prompts
     suggestions_prompt = (
-        f"Suggest improvements to clarity, tone, and engagement for this post:\n\n{text}"
-    )
-    revised_prompt = (
-        f"Rewrite this post for clarity, tone, and engagement without changing the core message:\n\n{text}"
+        f"Suggest improvements to clarity, tone, and engagement for this post. Make sure your answer is relatively short with a list of brief suggestions only:\n\n{text}"
     )
     suggestions = call_gemini_api(suggestions_prompt)
+    
+    revised_prompt = (
+        f"Rewrite this post for clarity, tone, and engagement without changing the core message. The suggestions for improvement are: {suggestions}. Based on these suggestions return a revised text of similar length to the other one. Ensure your response includes only the revised text and introduction:\n\n{text}"
+    )
+
+    # Call Gemini
+    
     revised = call_gemini_api(revised_prompt)
 
     return jsonify({

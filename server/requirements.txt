@@ -1,0 +1,5 @@
+Flask
+flask-cors
+textblob
+requests
+python-dotenv

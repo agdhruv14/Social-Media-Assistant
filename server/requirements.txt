@@ -3,3 +3,7 @@ flask-cors
 textblob
 requests
 python-dotenv
+nltk
+vaderSentiment
+transformers
+torch

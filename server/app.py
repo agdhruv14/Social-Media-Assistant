@@ -1,29 +1,30 @@
 import os
+import re
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from textblob import TextBlob
 import requests
 from dotenv import load_dotenv
+import nltk
+nltk.download('vader_lexicon')
+from nltk.sentiment.vader import SentimentIntensityAnalyzer
+from transformers import pipeline
 
-# Load environment variables
 dotenv_path = os.path.join(os.path.dirname(__file__), '.env')
 load_dotenv(dotenv_path)
 
 app = Flask(__name__)
 CORS(app)
 
-# Gemini API configuration
+
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 if not GEMINI_API_KEY:
     raise RuntimeError("GEMINI_API_KEY environment variable is required.")
-# Construct the full endpoint including the key
-GEMINI_API_URL = (
+gemini_url = (
     "https://generativelanguage.googleapis.com/"
     "v1beta/models/gemini-2.0-flash:generateContent"
-    f"?key={GEMINI_API_KEY}"
 )
 
-# Platform-specific limits
+
 PLATFORM_LIMITS = {
     "linkedin": {"char_limit": 1300, "hashtag_limit": 30},
     "instagram": {"char_limit": 2200, "hashtag_limit": 30},
@@ -31,31 +32,48 @@ PLATFORM_LIMITS = {
     "facebook": {"char_limit": 63206, "hashtag_limit": 30},
 }
 
-# Simple NLP-based tone classification
-def classify_tone(text: str) -> str:
-    blob = TextBlob(text)
-    polarity = blob.sentiment.polarity
-    if polarity > 0.1:
-        return "Positive"
-    elif polarity < -0.1:
-        return "Negative"
-    return "Neutral"
+vader_analyzer = SentimentIntensityAnalyzer()
+emotion_classifier = pipeline(
+    "text-classification",
+    model="j-hartmann/emotion-english-distilroberta-base",
+    return_all_scores=False
+)
 
-# Wrapper to call the Gemini completion API
+def classify_tone(text: str) -> str:
+    scores = vader_analyzer.polarity_scores(text)
+    comp = scores['compound']
+    if comp >= 0.05:
+        sentiment = "Positive"
+    elif comp <= -0.05:
+        sentiment = "Negative"
+    else:
+        sentiment = "Neutral"
+
+
+    emo = emotion_classifier(text)[0]['label']
+
+    contractions = re.findall(r"\b(?:'t|'re|'ve|'ll|'d|'s)\b", text)
+    contraction_ratio = len(contractions) / max(len(text.split()), 1)
+    style = "Informal" if contraction_ratio > 0.05 else "Formal"
+
+    return f"Sentiment: {sentiment}; Emotion: {emo}; Style: {style}"
+
+
 def call_gemini_api(prompt: str) -> str:
-    headers = {"Content-Type": "application/json"}
+    headers = {
+        "Content-Type": "application/json",
+        "x-goog-api-key": GEMINI_API_KEY,
+    }
     payload = {
         "contents": [
-            {"parts": [{"text": prompt}]}  # wrap prompt as per Gemini API quickstart
+            {"parts": [{"text": prompt}]}
         ]
     }
-    resp = requests.post(GEMINI_API_URL, json=payload, headers=headers)
+    resp = requests.post(gemini_url, json=payload, headers=headers)
     resp.raise_for_status()
     data = resp.json()
-    # Google Generative Language API returns candidates under 'candidates'
-    answer = data.get("candidates", [])[0].get("content", "")['parts'][0]['text']
-    print(answer)
-    return answer
+
+    return data.get("candidates", [])[0].get("content", {}).get("parts", [])[0].get("text", "").strip()
 
 @app.route('/review', methods=['POST'])
 def review_post():
@@ -63,25 +81,24 @@ def review_post():
     text: str = req.get('text', '')
     platform: str = req.get('platform', '').lower()
 
-    # Analyse tone
     tone = classify_tone(text)
 
-    # Fetch platform limits
     limits = PLATFORM_LIMITS.get(platform, {})
 
-    # Prepare prompts
     suggestions_prompt = (
-        f"Suggest improvements to clarity, tone, and engagement for this post. Make sure your answer is relatively short with a list of brief suggestions only:\n\n{text}"
+        f"Provide 3 concise suggestions to improve clarity, tone, and engagement for the following post. "
+        "List each suggestion on its own line, prefixed by a number. "
+        "Respond in plain text only; do not include any Markdown or extra commentary.\n\n" + text
     )
     suggestions = call_gemini_api(suggestions_prompt)
-    
-    revised_prompt = (
-        f"Rewrite this post for clarity, tone, and engagement without changing the core message. The suggestions for improvement are: {suggestions}. Based on these suggestions return a revised text of similar length to the other one. Ensure your response includes only the revised text and introduction:\n\n{text}"
-    )
 
-    # Call Gemini
-    
+    revised_prompt = (
+        f"Rewrite the post using the suggestions above to enhance clarity, tone, and engagement. "
+        "Return only the revised text in plain text, with no headings, lists, or additional commentary. "
+        "Maintain a length similar to the original. The post must be revised based on the following suggestions:\n {suggestions}\n\n" + text
+    )
     revised = call_gemini_api(revised_prompt)
+
 
     return jsonify({
         "tone": tone,

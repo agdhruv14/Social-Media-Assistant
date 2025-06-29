@@ -5,7 +5,10 @@ from flask_cors import CORS
 import requests
 from dotenv import load_dotenv
 import nltk
-nltk.download('vader_lexicon')
+try:
+    nltk.data.find('sentiment/vader_lexicon.zip')
+except LookupError:
+    nltk.download('vader_lexicon', quiet=True)
 from nltk.sentiment.vader import SentimentIntensityAnalyzer
 from transformers import pipeline
 

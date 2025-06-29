@@ -6,7 +6,7 @@
 
 ## Setup Instructions
 Run ```git clone https://github.com/agdhruv14/Social-Media-Assistant``` in an IDE to get the files, then follow the below instructions to run both the backend and front-end (in seperate terminals)<br>
-Click on the link in the front-end or navigate to localhost:5173
+Click on the link in the front-end or navigate to ```localhost:5173```.
 
 ### Frontend
 ```bash
@@ -16,6 +16,7 @@ npm run dev
 ```
 
 ### Backend
+Note that to download the model for NLP it may take 1-2 minutes when first running the app
 ```bash
 cd server
 python -m venv venv
